@@ -25,10 +25,11 @@ class LLMService:
             self.vision_model = os.getenv("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
             
             self.system_prompt = (
-                "You are an advanced AI assistant developed by the 'Zencoders AI Team' from BEC (Bapatla Engineering College). "
-                "Your primary goal is to assist users with their queries, research, and analysis tasks. "
-                "If asked about your identity, always state clearly that you were developed by the Zencoders AI Team from BEC. "
-                "Be helpful, professional, and concise."
+                "You are 'ResearchAI', a professional advanced AI research assistant developed by the 'Zencoders AI Team' from Bapatla Engineering College (BEC). "
+                "Your expertise lies in analyzing academic papers, technical documents, and providing deep insights. "
+                "Always maintain a professional, academic, yet helpful tone. "
+                "When a document is provided in your context, prioritize its content for answering queries. "
+                "If asked about your identity, always state you were developed by the Zencoders AI Team from BEC."
             )
 
     def _call_api_with_retry(self, messages: List[dict], model: str, retries: int = 3) -> Optional[str]:
@@ -89,6 +90,40 @@ class LLMService:
                     yield content
         except Exception as e:
             logger.error(f"Stream error: {e}")
+            yield f"Error: {str(e)}"
+
+    def generate_response_stream_with_history(self, messages: List[dict]) -> Generator[str, None, None]:
+        """
+        Generates a streaming response based on conversation history.
+        messages: List of objects with 'role' and 'content'.
+        """
+        if not self.client:
+            yield "AI service is not configured."
+            return
+
+        # Prepare messages including system prompt
+        formatted_messages = [{"role": "system", "content": self.system_prompt}]
+        
+        # Ensure only supported roles and fields are passed to the API
+        for msg in messages:
+            if msg.get('role') in ['user', 'assistant', 'system']:
+                formatted_messages.append({
+                    "role": msg['role'],
+                    "content": msg['content']
+                })
+
+        try:
+            stream = self.client.chat.completions.create(
+                messages=formatted_messages,
+                model=self.model,
+                stream=True,
+            )
+            for chunk in stream:
+                content = chunk.choices[0].delta.content
+                if content:
+                    yield content
+        except Exception as e:
+            logger.error(f"Stream error with history: {e}")
             yield f"Error: {str(e)}"
 
     def analyze_image_stream(self, prompt: str, image_data: str) -> Generator[str, None, None]:
@@ -189,6 +224,167 @@ class LLMService:
         """
         return self._generate_response(prompt)
 
+    def extract_knowledge_graph(self, text: str):
+        """
+        Analyzes the text and extracts a knowledge graph (nodes and edges).
+        Optimized for scholars to visualize paper connections.
+        """
+        prompt = f"""
+        Act as an Advanced Knowledge Architect. Analyze the following academic text and extract a high-fidelity knowledge graph.
+        
+        Focus on:
+        - Key Concepts (Nodes)
+        - Theories/Models (Nodes)
+        - Relationships/Influences (Edges)
+        - Methodologies (Nodes)
+        
+        TEXT SNIPPET:
+        {text[:4000]}
+        
+        Return ONLY a JSON object with this structure:
+        {{
+            "nodes": [{{ "id": "1", "label": "Concept Name", "type": "theory/concept/method/entity" }}],
+            "edges": [{{ "from": "1", "to": "2", "label": "relationship description" }}]
+        }}
+        
+        Constraint: Return valid JSON ONLY. No markdown, no preamble.
+        """
+        response = self._generate_response(prompt)
+        try:
+            import json
+            clean_json = response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_json)
+        except Exception as e:
+            logger.error(f"Graph extraction error: {e}")
+            return {"nodes": [], "edges": []}
+
+    def web_search_augment(self, query: str, context: str = ""):
+        """
+        Performs a deep research search using Tavily and synthesizes an academic response.
+        """
+        tavily_key = os.getenv("TAVILY_API_KEY")
+        if not tavily_key:
+            return None
+            
+        try:
+            from tavily import TavilyClient
+            t_client = TavilyClient(api_key=tavily_key)
+            
+            # Focused academic search
+            search_query = f"scholarly research and latest findings on {query}"
+            search_results = t_client.search(search_query, search_depth="advanced", max_results=5)
+            
+            web_context = "\n\n".join([f"Source: {r['url']}\nContent: {r['content']}" for r in search_results.get('results', [])])
+            
+            synthesis_prompt = f"""
+            Act as a Senior Research Fellow. You are helping a student prepare a paper for a hackathon.
+            
+            USER QUERY: {query}
+            LOCAL DOCUMENT CONTEXT: {context[:2000] if context else "None"}
+            LATEST WEB RESEARCH: 
+            {web_context}
+            
+            Synthesize a comprehensive, scholarly response. 
+            - Compare local context with latest web findings.
+            - Provide citations for web sources.
+            - Identify gaps in current research that can be explored.
+            
+            Format with markdown. Use 'Source' links properly.
+            """
+            
+            answer = self._generate_response(synthesis_prompt)
+            return {
+                "answer": answer,
+                "sources": search_results.get('results', [])
+            }
+        except Exception as e:
+            logger.error(f"Web research error: {e}")
+            return None
+
+    def match_journals(self, abstract: str):
+        """
+        Analyzes the abstract and matches it with top-tier journals.
+        """
+        prompt = f"""
+        Act as a Publication Strategist. Analyze this research abstract and suggest 3-5 high-impact journals for publication.
+        
+        ABSTRACT:
+        {abstract[:3000]}
+        
+        For each journal, provide:
+        - Name
+        - Estimated Impact Factor (0.0 - 50.0)
+        - Average Review Time (e.g. 2-4 months)
+        - Acceptance Probability (High/Medium/Low) based on topic fit.
+        
+        Return ONLY a JSON array of objects. No markdown.
+        Example: [{{ "name": "Nature", "impact": 42.1, "review_time": "3 months", "prob": "Low" }}]
+        """
+        response = self._generate_response(prompt)
+        try:
+            import json
+            clean_json = response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_json)
+        except: return []
+
+    def get_research_trends(self, topic: str):
+        """
+        Analyzes the 'market value' and volume of a research topic.
+        """
+        tavily_key = os.getenv("TAVILY_API_KEY")
+        web_info = ""
+        if tavily_key:
+            try:
+                from tavily import TavilyClient
+                t_client = TavilyClient(api_key=tavily_key)
+                search_res = t_client.search(f"publication volume and research trends for {topic} 2020-2026", max_results=3)
+                web_info = "\n".join([r['content'] for r in search_res.get('results', [])])
+            except: pass
+
+        prompt = f"""
+        Act as a Research Analyst. Based on this topic and web data, estimate the research 'market' interest.
+        TOPIC: {topic}
+        WEB DATA: {web_info}
+        
+        Return ONLY a JSON object:
+        {{
+            "trend_score": <int 0-100>,
+            "market_status": "Emerging / Saturated / High Growth",
+            "yearly_volume": [{{ "year": 2021, "count": 100 }}, {{ "year": 2022, "count": 150 }}, ...],
+            "analysis": "2-3 sentence trend summary"
+        }}
+        """
+        response = self._generate_response(prompt)
+        try:
+            import json
+            clean_json = response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_json)
+        except: return {"trend_score": 50, "market_status": "Stable", "yearly_volume": []}
+
+    def scout_funding(self, keywords: str):
+        """
+        Searches for active grants and funding opportunities.
+        """
+        tavily_key = os.getenv("TAVILY_API_KEY")
+        if not tavily_key: return []
+        
+        try:
+            from tavily import TavilyClient
+            t_client = TavilyClient(api_key=tavily_key)
+            # Focused search for open grants
+            search_query = f"open research grants and funding opportunities for {keywords} 2025 2026"
+            search_results = t_client.search(search_query, search_depth="advanced", max_results=5)
+            
+            funding_data = []
+            for r in search_results.get('results', []):
+                funding_data.append({
+                    "title": r.get('title', 'Funding Opportunity'),
+                    "source": r.get('url', '#'),
+                    "snippet": r.get('content', '')[:200]
+                })
+            return funding_data
+        except: return []
+
     def generate_visual_prompt(self, paper_content: str):
         """
         Synthesizes a visual concept and retrieves a matching image.
@@ -243,11 +439,111 @@ class LLMService:
                     }
             except: pass
 
-            # Step 4: Final Fallback to stable Pollinations
             return {
                 "prompt": f"Visualizing {keywords}...",
                 "image_url": f"https://image.pollinations.ai/prompt/{keywords.replace(' ', '%20')}?width=1024&height=1024&nologo=true"
             }
         except Exception as e:
-            logger.error(f"Visualization error: {e}")
             return None
+
+    def check_ieee_compliance(self, text: str):
+        """
+        Analyzes the text structure against IEEE formatting standards.
+        """
+        prompt = f"""
+        Act as an IEEE Peer Reviewer. Analyze the follow research paper text for structural compliance with IEEE standards.
+        
+        TEXT:
+        {text[:5000]}
+        
+        Check for:
+        1. Presence of 'Abstract'
+        2. Presence of 'Index Terms' or 'Keywords' (Required for IEEE)
+        3. Roman numeral section numbering (I. Introduction, II. Literature Survey, etc.)
+        4. References section consistency.
+        5. Figure/Table citation style.
+        
+        Return ONLY a JSON object:
+        {{
+            "is_eligible": <boolean>,
+            "score": <int 0-100>,
+            "feedback": "A concise summary of status",
+            "required_changes": ["Change 1", "Change 2", ...],
+            "strengths": ["Point 1", ...]
+        }}
+        """
+        response = self._generate_response(prompt)
+        try:
+            import json
+            clean_json = response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_json)
+        except:
+            return {"is_eligible": False, "score": 0, "feedback": "Unrecognized format", "required_changes": []}
+
+    def draft_academic_section(self, topic: str, section_type: str, context: str = ""):
+        """
+        Drafts professional academic sections like Abstract or Literature Survey.
+        """
+        prompt = f"""
+        Act as a Principal Research Scientist. Draft a highly professional '{section_type}' for a research paper.
+        
+        TOPIC: {topic}
+        CONTEXT/DATA: {context}
+        
+        Style Guide:
+        - Use formal academic English.
+        - Ensure a logical flow of arguments.
+        - For Literature Survey, mention hypothetical or general research trends if specific ones aren't provided.
+        - For Abstract, follow the (Problem - Method - Results - Impact) structure.
+        
+        Return ONLY the drafted text.
+        """
+        return self._generate_response(prompt)
+
+    def synthesize_multiple_papers(self, papers: list):
+        """
+        Generates a comparative analysis of multiple research papers.
+        Each item in 'papers' should be a dict with 'filename' and 'content'.
+        """
+        papers_context = ""
+        for i, paper in enumerate(papers):
+            # Limiting each to 2000 chars to avoid prompt bloat
+            content = paper.get('content', '')[:2000]
+            papers_context += f"\n--- PAPER {i+1}: {paper.get('filename')} ---\n{content}\n"
+
+        prompt = f"""
+        Act as a Senior Research Analyst. Synthesize the following research papers into a comparative literature grid.
+        
+        DATA:
+        {papers_context}
+        
+        Compare them across:
+        1. Primary Objective
+        2. Methodology Used
+        3. Key Findings
+        4. Unique Contribution/Novelty
+        
+        Return ONLY a JSON list of objects:
+        [
+            {{
+                "paper": "Filename",
+                "objective": "...",
+                "methodology": "...",
+                "findings": "...",
+                "novelty": "..."
+            }},
+            ...
+        ]
+        """
+        response = self._generate_response(prompt)
+        try:
+            import json
+            clean_json = response.replace("```json", "").replace("```", "").strip()
+            # Find the first [ and last ] to be extra safe with LLM output
+            start = clean_json.find('[')
+            end = clean_json.rfind(']') + 1
+            if start != -1 and end != -1:
+                return json.loads(clean_json[start:end])
+            return json.loads(clean_json)
+        except:
+            return []

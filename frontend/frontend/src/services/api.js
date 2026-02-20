@@ -38,6 +38,7 @@ export const logout = () => api.post('/auth/logout');
 export const getCurrentUser = () => api.get('/auth/me');
 
 export const getPapers = () => api.get('/papers');
+export const getPaperContent = (filename) => api.get(`/papers/${filename}`);
 export const uploadPaper = (file) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -56,11 +57,6 @@ export const askQuestion = (question, context) => {
     });
 };
 export const getNews = (topic) => api.get(`/news?topic=${topic}`);
-export const createRoom = (name) => api.post('/rooms', { name });
-export const getRoom = (roomId) => api.get(`/rooms/${roomId}`);
-export const addMessage = (roomId, content, user) => api.post(`/rooms/${roomId}/messages`, { content, user });
-export const getMessages = (roomId) => api.get(`/rooms/${roomId}/messages`);
-export const comparePapers = (filenames) => api.post('/compare', { filenames });
 export const checkPlagiarism = (data) => {
   if (data instanceof FormData) {
     return api.post('/check-plagiarism', data, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -70,5 +66,19 @@ export const checkPlagiarism = (data) => {
 export const getDashboardData = () => api.get('/dashboard');
 export const getConferences = (topic) => api.get(`/conferences?topic=${topic}`);
 export const visualizePaper = (data) => api.post('/visualize-paper', data);
+export const deepWebResearch = (data) => api.post('/web-research', data);
+export const getKnowledgeGraph = (data) => api.post('/knowledge-graph', data);
+export const matchJournals = (data) => api.post('/journal-match', data);
+export const getResearchTrends = (data) => api.post('/research-trends', data);
+export const scoutFunding = (data) => api.post('/funding-scout', data);
+export const checkIEEEFormat = (data) => api.post('/check-ieee', data);
+export const draftAcademicSection = (data) => api.post('/draft-section', data);
+export const synthesizePapers = (data) => api.post('/synthesize-papers', data);
+export const createRoom = (data) => api.post('/collaboration/create-room', data);
+export const getRoom = (roomId) => api.get(`/collaboration/rooms/${roomId}`);
+export const addRoomMessage = (data) => api.post('/collaboration/add-message', data);
+export const getMessages = (roomId) => api.get(`/collaboration/rooms/${roomId}/messages`);
+export const listRooms = () => api.get('/collaboration/rooms');
+export const saveChatHistory = (messages) => api.post('/save-chat', { messages });
 
 export default api;

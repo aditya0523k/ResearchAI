@@ -30,5 +30,42 @@
         "name": "rest",
         "created_at": "2026-02-20 15:01:38.158247",
         "messages": []
+    },
+    "3e876615-8a3b-4f7d-8486-ee5a686c075b": {
+        "name": "Aditya",
+        "created_at": "2026-02-20 22:54:22.603651",
+        "messages": [
+            {
+                "user": "Researcher",
+                "content": "hii",
+                "timestamp": "2026-02-20 22:54:26.483923"
+            },
+            {
+                "user": "Researcher",
+                "content": "hello",
+                "timestamp": "2026-02-20 22:55:59.827744"
+            }
+        ]
+    },
+    "b73faa52-ceab-4468-b871-6ba8390c563c": {
+        "name": "Awarcrown",
+        "created_at": "2026-02-20 22:58:39.617321",
+        "messages": [
+            {
+                "user": "Aditya",
+                "content": "hiii",
+                "timestamp": "2026-02-20 22:58:55.586410"
+            },
+            {
+                "user": "Awarcrown",
+                "content": "hello",
+                "timestamp": "2026-02-20 22:59:21.649653"
+            }
+        ]
+    },
+    "e69170ad-c7bd-4d03-b48e-434eddb79814": {
+        "name": "Collaboration Room: Project Alpha",
+        "created_at": "2026-02-21 00:43:12.816578",
+        "messages": []
     }
 }

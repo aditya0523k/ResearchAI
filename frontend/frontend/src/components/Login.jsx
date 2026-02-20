@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { User, Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
+import { useRef } from 'react';
 
 
 const AIBackground = ({ mouseX, mouseY }) => {
@@ -42,23 +43,24 @@ const AIBackground = ({ mouseX, mouseY }) => {
                         }}
                     />
                 ))}
-                {[...Array(20)].map((_, i) => (
+                {[...Array(30)].map((_, i) => (
                     <motion.div
                         key={`p-${i}`}
-                        initial={{ opacity: 0, y: "110vh", x: Math.random() * 100 + "%" }}
-                        animate={{ opacity: [0, 0.8, 0], y: "-10vh" }}
+                        initial={{ opacity: 0, y: '110%', x: `${Math.random() * 100}%` }}
+                        animate={{ opacity: [0, 0.9, 0], y: '-10%' }}
                         transition={{
-                            duration: 5 + Math.random() * 10,
-                            delay: Math.random() * 5,
+                            duration: 6 + Math.random() * 12,
+                            delay: Math.random() * 8,
                             repeat: Infinity,
-                            ease: "linear"
+                            ease: 'linear'
                         }}
                         style={{
                             position: 'absolute',
-                            width: '2px',
-                            height: '2px',
-                            background: '#fff',
+                            width: i % 5 === 0 ? '4px' : '2px',
+                            height: i % 5 === 0 ? '4px' : '2px',
+                            background: i % 3 === 0 ? '#38bdf8' : i % 3 === 1 ? '#a855f7' : '#fff',
                             borderRadius: '50%',
+                            boxShadow: i % 5 === 0 ? '0 0 6px rgba(56,189,248,0.8)' : 'none',
                         }}
                     />
                 ))}
@@ -66,6 +68,142 @@ const AIBackground = ({ mouseX, mouseY }) => {
         </div>
     );
 };
+
+// Animated dot-grid with scanning sweep line
+const AnimatedGrid = () => {
+    return (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 1, overflow: 'hidden', opacity: 0.35 }}>
+            <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <circle cx="1" cy="1" r="1" fill="rgba(56,189,248,0.5)" />
+                    </pattern>
+                    <linearGradient id="scanGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(56,189,248,0)" />
+                        <stop offset="50%" stopColor="rgba(56,189,248,0.15)" />
+                        <stop offset="100%" stopColor="rgba(56,189,248,0)" />
+                    </linearGradient>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+            </svg>
+            <motion.div
+                animate={{ y: ['-100%', '200%'] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'linear', repeatDelay: 1 }}
+                style={{
+                    position: 'absolute', left: 0, right: 0,
+                    height: '30%',
+                    background: 'linear-gradient(to bottom, rgba(56,189,248,0) 0%, rgba(56,189,248,0.08) 50%, rgba(56,189,248,0) 100%)',
+                    pointerEvents: 'none'
+                }}
+            />
+        </div>
+    );
+};
+
+// Floating connected nodes
+const nodePositions = [
+    { x: 15, y: 20 }, { x: 35, y: 10 }, { x: 65, y: 18 },
+    { x: 80, y: 35 }, { x: 55, y: 45 }, { x: 25, y: 55 },
+    { x: 70, y: 65 }, { x: 40, y: 75 }, { x: 15, y: 80 },
+];
+const connections = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [4, 6], [6, 7], [7, 8], [5, 8], [0, 5], [2, 4]];
+
+const FloatingNodes = () => (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 2, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {connections.map(([a, b], i) => (
+                <motion.line
+                    key={i}
+                    x1={nodePositions[a].x} y1={nodePositions[a].y}
+                    x2={nodePositions[b].x} y2={nodePositions[b].y}
+                    stroke="rgba(56,189,248,0.2)" strokeWidth="0.3"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={{ pathLength: [0, 1, 1, 0], opacity: [0, 0.6, 0.6, 0] }}
+                    transition={{ duration: 4, delay: i * 0.3, repeat: Infinity, repeatDelay: 1 }}
+                />
+            ))}
+            {nodePositions.map((pos, i) => (
+                <motion.g key={i}>
+                    <motion.circle
+                        cx={pos.x} cy={pos.y} r="1.2"
+                        fill="rgba(56,189,248,0.15)"
+                        stroke="rgba(56,189,248,0.7)" strokeWidth="0.3"
+                        animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 2.5 + i * 0.3, repeat: Infinity, delay: i * 0.2 }}
+                        style={{ transformOrigin: `${pos.x}px ${pos.y}px` }}
+                    />
+                    <motion.circle
+                        cx={pos.x} cy={pos.y} r="2.5"
+                        fill="none"
+                        stroke="rgba(56,189,248,0.2)" strokeWidth="0.2"
+                        animate={{ r: [2.5, 4.5], opacity: [0.5, 0] }}
+                        transition={{ duration: 2, repeat: Infinity, delay: i * 0.4 }}
+                    />
+                </motion.g>
+            ))}
+        </svg>
+    </div>
+);
+
+
+// Orbit ring around AI core
+const OrbitRing = () => (
+    <motion.div
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 1, delay: 0.5 }}
+        style={{
+            position: 'absolute', bottom: '2.5rem', right: '2.5rem',
+            width: '140px', height: '140px',
+            zIndex: 5, pointerEvents: 'none'
+        }}
+    >
+        {/* Core */}
+        <motion.div
+            animate={{ boxShadow: ['0 0 15px rgba(56,189,248,0.5)', '0 0 35px rgba(56,189,248,0.9)', '0 0 15px rgba(56,189,248,0.5)'] }}
+            transition={{ duration: 2.5, repeat: Infinity }}
+            style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%,-50%)',
+                width: '32px', height: '32px',
+                background: 'linear-gradient(135deg, #38bdf8, #3b82f6)',
+                borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.8rem', fontWeight: 700, color: '#fff'
+            }}
+        >
+            AI
+        </motion.div>
+        {/* Ring 1 */}
+        {[60, 90, 120].map((size, ri) => (
+            <motion.div
+                key={ri}
+                animate={{ rotate: ri % 2 === 0 ? 360 : -360 }}
+                transition={{ duration: 5 + ri * 2, repeat: Infinity, ease: 'linear' }}
+                style={{
+                    position: 'absolute',
+                    top: '50%', left: '50%',
+                    width: `${size}px`, height: `${size}px`,
+                    marginLeft: `-${size / 2}px`, marginTop: `-${size / 2}px`,
+                    borderRadius: '50%',
+                    border: `1px solid rgba(${ri === 0 ? '56,189,248' : ri === 1 ? '168,85,247' : '45,212,191'},${0.5 - ri * 0.1})`,
+                }}
+            >
+                {/* Dot on ring */}
+                <motion.div
+                    style={{
+                        position: 'absolute', top: '-3px', left: '50%',
+                        width: '6px', height: '6px',
+                        borderRadius: '50%',
+                        background: ri === 0 ? '#38bdf8' : ri === 1 ? '#a855f7' : '#2dd4bf',
+                        boxShadow: `0 0 8px ${ri === 0 ? '#38bdf8' : ri === 1 ? '#a855f7' : '#2dd4bf'}`,
+                        transform: 'translateX(-50%)'
+                    }}
+                />
+            </motion.div>
+        ))}
+    </motion.div>
+);
 
 // Typing Effect Component
 const TypingText = ({ text, delay = 0 }) => {
@@ -118,20 +256,31 @@ const RotatingText = () => {
     }, []);
 
     return (
-        <div style={{ height: '200px', position: 'relative' }}>
+        <div style={{ minHeight: '260px', position: 'relative', width: '100%' }}>
             <AnimatePresence mode='wait'>
                 <motion.div
                     key={index}
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.5 }}
-                    style={{ position: 'absolute', top: 0, left: 0 }}
+                    exit={{ opacity: 0, y: -15 }}
+                    transition={{ duration: 0.6, ease: 'easeOut' }}
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%' }}
                 >
-                    <h1 style={{ fontSize: '2.5rem', fontWeight: 700, lineHeight: 1.1, marginBottom: '1.5rem', background: 'linear-gradient(to right, #fff, #94a3b8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', maxWidth: '800px', minHeight: '120px' }}>
+                    <h1 style={{
+                        fontSize: 'clamp(1.8rem, 3vw, 2.8rem)',
+                        fontWeight: 700,
+                        lineHeight: 1.15,
+                        marginBottom: '1.25rem',
+                        background: 'linear-gradient(to right, #ffffff, #94a3b8)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        width: '100%',
+                        display: 'block',
+                        minHeight: '80px'
+                    }}>
                         <TypingText text={texts[index].title} />
                     </h1>
-                    <p style={{ fontSize: '1.125rem', color: '#94a3b8', maxWidth: '400px', lineHeight: 1.6 }}>
+                    <p style={{ fontSize: '1.05rem', color: '#94a3b8', lineHeight: 1.7, width: '100%', maxWidth: '520px' }}>
                         {texts[index].subtitle}
                     </p>
                 </motion.div>
@@ -183,25 +332,51 @@ export default function Login() {
         >
 
             {/* Left Side - AI Visuals */}
-            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', padding: '8rem', color: '#fff', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', padding: '4rem 5rem', color: '#fff', borderRight: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
                 <AIBackground mouseX={mouseX} mouseY={mouseY} />
+                <AnimatedGrid />
+                <FloatingNodes />
+                <OrbitRing />
 
-                <div style={{ position: 'relative', zIndex: 10 }}>
+                <div style={{ position: 'relative', zIndex: 10, width: '100%' }}>
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.8, delay: 0.2 }}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                            <div style={{ width: '48px', height: '48px', background: 'linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(59, 130, 246, 0.5)' }}>
+                            <motion.div
+                                animate={{ boxShadow: ['0 0 15px rgba(59,130,246,0.4)', '0 0 30px rgba(59,130,246,0.8)', '0 0 15px rgba(59,130,246,0.4)'] }}
+                                transition={{ duration: 2.5, repeat: Infinity }}
+                                style={{ width: '48px', height: '48px', background: 'linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
                                 <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#fff' }}>R</span>
-                            </div>
-                            <span style={{ fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.02em' }}>ResearchAI</span>
+                            </motion.div>
+                            <motion.span
+                                animate={{ opacity: [0.8, 1, 0.8] }}
+                                transition={{ duration: 3, repeat: Infinity }}
+                                style={{ fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.02em' }}
+                            >
+                                ResearchAI
+                            </motion.span>
                         </div>
                     </motion.div>
 
                     <RotatingText />
                 </div>
+
+                {/* Bottom glowing line */}
+                <motion.div
+                    animate={{ scaleX: [0, 1], opacity: [0, 1] }}
+                    transition={{ duration: 1.2, delay: 0.8, ease: 'easeOut' }}
+                    style={{
+                        position: 'absolute', bottom: 0, left: 0, right: 0,
+                        height: '1px',
+                        background: 'linear-gradient(to right, transparent, #38bdf8, transparent)',
+                        transformOrigin: 'left',
+                        zIndex: 10
+                    }}
+                />
             </div>
 
             {/* Right Side - Login Form */}
@@ -254,10 +429,7 @@ export default function Login() {
                         </div>
 
                         <div style={{ position: 'relative' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                <label style={{ fontSize: '0.875rem', fontWeight: 500, color: '#e2e8f0' }}>Password</label>
-                                <a href="#" style={{ fontSize: '0.75rem', color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>Forgot password?</a>
-                            </div>
+                            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#e2e8f0', marginBottom: '0.5rem' }}>Password</label>
                             <div style={{ position: 'relative' }}>
                                 <Lock size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
                                 <input

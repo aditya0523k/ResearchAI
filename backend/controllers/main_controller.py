@@ -46,6 +46,22 @@ def list_papers():
     print(f"Found {len(papers)} papers")
     return jsonify({'papers': papers}), 200
 
+@main_bp.route('/papers/<filename>', methods=['GET'])
+@jwt_required()
+def get_paper_content(filename):
+    filepath = paper_service.get_paper_path(filename)
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'File not found'}), 404
+    
+    content = paper_service.extract_text(filepath)
+    if content is None:
+        return jsonify({'error': 'Failed to extract text'}), 500
+        
+    return jsonify({
+        'filename': filename,
+        'content': content
+    }), 200
+
 @main_bp.route('/search', methods=['POST'])
 @jwt_required()
 def search_papers():
@@ -87,7 +103,7 @@ def summarize_paper():
         
     if user_id:
         item_name = filename if filename else "Text Snippet"
-        new_history = History(user_id=user_id, action="Summarized", item_name=item_name)
+        new_history = History(user_id=user_id, action="Summarized", item_name=item_name, content=summary)
         db.session.add(new_history)
         db.session.commit()
 
@@ -111,6 +127,18 @@ def answer_question():
         
     try:
         answer = llm_service.answer_question(context, question)
+        # Log history
+        try:
+            user_identity = get_jwt_identity()
+            user_id = int(str(user_identity)) if user_identity else None
+            if user_id:
+                item_name = (question[:30] + '...') if len(question) > 30 else question
+                new_history = History(user_id=user_id, action="Chat", item_name=item_name, content=answer)
+                db.session.add(new_history)
+                db.session.commit()
+        except Exception as e:
+            print(f"History Log Error: {e}")
+            
         return jsonify({'answer': answer}), 200
     except Exception as e:
         print(f"Error in answer_question: {e}")
@@ -123,26 +151,62 @@ def stream_answer_question():
     if not data:
         return jsonify({'error': 'Invalid request body'}), 400
         
-    question = data.get('question')
+    messages = data.get('messages', [])
+    question = data.get('question') # Fallback if messages not provided
     
-    # Log history
-    try:
-        user_identity = get_jwt_identity()
-        user_id = int(str(user_identity)) if user_identity else None
-        if user_id:
-            # Truncate prompt for history item
-            item_name = (question[:30] + '...') if len(question) > 30 else question
-            new_history = History(user_id=user_id, action="Chat", item_name=item_name)
-            db.session.add(new_history)
-            db.session.commit()
-    except Exception as e:
-        print(f"History Log Error: {e}")
+    if not messages and not question:
+        return jsonify({'error': 'Question or messages is required'}), 400
+
+    # If messages is empty but question exists, create a simple message list
+    if not messages and question:
+        messages = [{"role": "user", "content": question}]
 
     def generate():
-        for chunk in llm_service.generate_response_stream(question):
+        # Use the history-enabled streaming method
+        for chunk in llm_service.generate_response_stream_with_history(messages):
             yield chunk
 
     return Response(stream_with_context(generate()), mimetype='text/plain')
+
+
+@main_bp.route('/save-chat', methods=['POST'])
+@jwt_required()
+def save_chat_history():
+    """Called by frontend after a stream completes to persist the full conversation."""
+    import json as _json
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+
+    messages = data.get('messages', [])  # Full array [{role, content}, ...]
+    if not messages:
+        return jsonify({'error': 'messages required'}), 400
+
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if not user_id:
+            return jsonify({'error': 'Unauthenticated'}), 401
+
+        # Build a display title from the first user message
+        first_user = next((m['content'] for m in messages if m.get('role') == 'user'), 'Chat')
+        item_name = (first_user[:60] + '...') if len(first_user) > 60 else first_user
+
+        # Store the full conversation as JSON string
+        content_json = _json.dumps(messages, ensure_ascii=False)
+
+        new_history = History(
+            user_id=user_id,
+            action='Chat',
+            item_name=item_name,
+            content=content_json
+        )
+        db.session.add(new_history)
+        db.session.commit()
+        return jsonify({'status': 'saved'}), 200
+    except Exception as e:
+        print(f"save_chat_history error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @main_bp.route('/analyze-image', methods=['POST'])
 @jwt_required()
@@ -204,7 +268,7 @@ def visualize_paper():
         user_identity = get_jwt_identity()
         user_id = int(str(user_identity)) if user_identity else None
         if user_id:
-            new_history = History(user_id=user_id, action="Visual Abstract", item_name=filename)
+            new_history = History(user_id=user_id, action="Visual Abstract", item_name=filename, content=result.get('image'))
             db.session.add(new_history)
             db.session.commit()
     except Exception as e:
@@ -308,48 +372,6 @@ def check_plagiarism():
         
     return jsonify({'result': result_data}), 200
 
-@main_bp.route('/rooms', methods=['POST'])
-@jwt_required()
-def create_room():
-    data = request.get_json()
-    name = data.get('name')
-    if not name:
-        return jsonify({'error': 'Room name is required'}), 400
-    
-    room_id = collaboration_service.create_room(name)
-    return jsonify({'room_id': room_id, 'name': name}), 201
-
-@main_bp.route('/rooms/<room_id>', methods=['GET'])
-@jwt_required()
-def get_room(room_id):
-    room = collaboration_service.get_room(room_id)
-    if not room:
-        return jsonify({'error': 'Room not found'}), 404
-    return jsonify(room), 200
-
-@main_bp.route('/rooms/<room_id>/messages', methods=['POST'])
-@jwt_required()
-def add_message(room_id):
-    data = request.get_json()
-    user_identity = get_jwt_identity()
-    # Ideally fetch username from DB, here just use ID or passed name if simple
-    content = data.get('content')
-    username = data.get('user', f"User {user_identity}")
-
-    if not content:
-        return jsonify({'error': 'Message content is required'}), 400
-        
-    message = collaboration_service.add_message(room_id, username, content)
-    if not message:
-         return jsonify({'error': 'Room not found'}), 404
-         
-    return jsonify(message), 201
-
-@main_bp.route('/rooms/<room_id>/messages', methods=['GET'])
-@jwt_required()
-def get_messages(room_id):
-    messages = collaboration_service.get_messages(room_id)
-    return jsonify({'messages': messages}), 200
 
 @main_bp.route('/dashboard', methods=['GET'])
 @jwt_required()
@@ -365,6 +387,7 @@ def get_dashboard_data():
         recent_activity.append({
             "action": item.action,
             "item": item.item_name,
+            "content": item.content,
             "time": item.timestamp.strftime("%Y-%m-%d %H:%M"),
             "user": "You"
         })
@@ -389,3 +412,193 @@ def get_dashboard_data():
         "stats": stats,
         "recent_activity": recent_activity
     }), 200
+
+@main_bp.route('/web-research', methods=['POST'])
+@jwt_required()
+def deep_web_research():
+    data = request.get_json()
+    query = data.get('query')
+    context = data.get('context', '')
+    
+    if not query:
+        return jsonify({'error': 'Query is required'}), 400
+        
+    result = llm_service.web_search_augment(query, context)
+    if not result:
+        return jsonify({'error': 'Web research failed. Check API configuration.'}), 500
+        
+    # Log history
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if user_id:
+            new_history = History(user_id=user_id, action="Web Research", item_name=query[:30], content=result.get('answer'))
+            db.session.add(new_history)
+            db.session.commit()
+    except Exception as e: 
+        print(f"Log error: {e}")
+        
+    return jsonify(result), 200
+
+@main_bp.route('/knowledge-graph', methods=['POST'])
+@jwt_required()
+def generate_knowledge_graph():
+    data = request.get_json()
+    content = data.get('content')
+    filename = data.get('filename', 'Unknown Document')
+    
+    if not content:
+        return jsonify({'error': 'Content required for graph extraction'}), 400
+        
+    graph_data = llm_service.extract_knowledge_graph(content)
+    
+    # Log history
+    try:
+        import json
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if user_id:
+            new_history = History(user_id=user_id, action="Knowledge Map", item_name=filename, content=json.dumps(graph_data))
+            db.session.add(new_history)
+            db.session.commit()
+    except Exception as e: 
+        print(f"Log error: {e}")
+        
+    return jsonify(graph_data), 200
+
+@main_bp.route('/journal-match', methods=['POST'])
+@jwt_required()
+def journal_match():
+    data = request.get_json()
+    abstract = data.get('abstract')
+    if not abstract: return jsonify({'error': 'Abstract required'}), 400
+    journals = llm_service.match_journals(abstract)
+    return jsonify(journals), 200
+
+@main_bp.route('/research-trends', methods=['POST'])
+@jwt_required()
+def research_trends():
+    data = request.get_json()
+    topic = data.get('topic')
+    if not topic: return jsonify({'error': 'Topic required'}), 400
+    trends = llm_service.get_research_trends(topic)
+    return jsonify(trends), 200
+
+@main_bp.route('/funding-scout', methods=['POST'])
+@jwt_required()
+def funding_scout():
+    data = request.get_json()
+    keywords = data.get('keywords')
+    if not keywords: return jsonify({'error': 'Keywords required'}), 400
+    funding = llm_service.scout_funding(keywords)
+    return jsonify(funding), 200
+
+@main_bp.route('/check-ieee', methods=['POST'])
+@jwt_required()
+def check_ieee():
+    data = request.get_json()
+    content = data.get('content')
+    if not content: return jsonify({'error': 'Content required'}), 400
+    result = llm_service.check_ieee_compliance(content)
+    
+    # Log history
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if user_id:
+            new_history = History(user_id=user_id, action="IEEE Audit", item_name="Format Check")
+            db.session.add(new_history)
+            db.session.commit()
+    except: pass
+    
+    return jsonify(result), 200
+
+@main_bp.route('/draft-section', methods=['POST'])
+@jwt_required()
+def draft_section():
+    data = request.get_json()
+    topic = data.get('topic')
+    section_type = data.get('section_type')
+    context = data.get('context', '')
+    if not topic or not section_type: 
+        return jsonify({'error': 'Topic and section type required'}), 400
+    draft = llm_service.draft_academic_section(topic, section_type, context)
+    
+    # Log history
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if user_id:
+            new_history = History(user_id=user_id, action="Drafted", item_name=section_type)
+            db.session.add(new_history)
+            db.session.commit()
+    except: pass
+    
+    return jsonify({'draft': draft}), 200
+@main_bp.route('/synthesize-papers', methods=['POST'])
+@jwt_required()
+def synthesize_papers():
+    data = request.get_json()
+    papers = data.get('papers', [])
+    if not papers: 
+        return jsonify({'error': 'No papers provided'}), 400
+    
+    result = llm_service.synthesize_multiple_papers(papers)
+    
+    # Log history
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if user_id:
+            new_history = History(user_id=user_id, action="Synthesized", item_name=f"{len(papers)} Papers")
+            db.session.add(new_history)
+            db.session.commit()
+    except: pass
+    
+    return jsonify(result), 200
+
+# Collaboration Endpoints
+@main_bp.route('/collaboration/create-room', methods=['POST'])
+@jwt_required()
+def create_room():
+    data = request.get_json()
+    name = data.get('name', 'New Research Room')
+    room_id = collaboration_service.create_room(name)
+    return jsonify({"room_id": room_id}), 201
+
+@main_bp.route('/collaboration/rooms/<room_id>', methods=['GET'])
+@jwt_required()
+def get_room(room_id):
+    room = collaboration_service.get_room(room_id)
+    if not room:
+        return jsonify({"error": "Room not found"}), 404
+    return jsonify(room), 200
+
+@main_bp.route('/collaboration/add-message', methods=['POST'])
+@jwt_required()
+def add_room_message():
+    data = request.get_json()
+    room_id = data.get('room_id')
+    content = data.get('content')
+    user = data.get('user', 'Researcher')
+    
+    if not room_id or not content:
+        return jsonify({"error": "Room ID and content required"}), 400
+        
+    message = collaboration_service.add_message(room_id, user, content)
+    if not message:
+        return jsonify({"error": "Failed to add message"}), 500
+        
+    return jsonify(message), 201
+
+@main_bp.route('/collaboration/rooms/<room_id>/messages', methods=['GET'])
+@jwt_required()
+def get_room_messages(room_id):
+    messages = collaboration_service.get_messages(room_id)
+    return jsonify({"messages": messages}), 200
+
+@main_bp.route('/collaboration/rooms', methods=['GET'])
+@jwt_required()
+def list_rooms():
+    rooms = collaboration_service.list_rooms()
+    return jsonify({"rooms": rooms}), 200

@@ -96,7 +96,7 @@ const PlagiarismChecker = () => {
                         <ShieldAlert size={48} color="#2dd4bf" />
                     </motion.div>
                     <h1 style={{ fontSize: '2.5rem', fontWeight: 700, background: 'linear-gradient(to right, #2dd4bf, #0ea5e9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '0.5rem' }}>
-                        Forensic Plagiarism Audit
+                        Research Paper Plagiarism Checker
                     </h1>
                     <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Advanced Perplexity, Burstiness & Web-Match Analysis.</p>
                 </header>
@@ -176,7 +176,7 @@ const PlagiarismChecker = () => {
                                 gap: '10px'
                             }}
                         >
-                            {loading ? <><Loader size={20} className="spin" /> Cross-Referencing Knowledge...</> : "Generate Forensic Report"}
+                            {loading ? <><Loader size={20} className="spin" /> Cross-Referencing Knowledge...</> : "Generate Plagiarism Report"}
                         </button>
                     </motion.div>
 

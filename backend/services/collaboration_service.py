@@ -49,3 +49,6 @@ class CollaborationService:
         if room_id in self.rooms:
             return self.rooms[room_id]["messages"]
         return []
+
+    def list_rooms(self):
+        return [{"id": rid, "name": data["name"], "created_at": data.get("created_at")} for rid, data in self.rooms.items()]

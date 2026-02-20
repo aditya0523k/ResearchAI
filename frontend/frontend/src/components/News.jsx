@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getNews, getConferences } from '../services/api';
-import { Newspaper, ExternalLink, Calendar, MapPin, Search, Loader, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Newspaper, ExternalLink, Calendar, MapPin, Search, Loader, Image as ImageIcon, Sparkles, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function News() {
@@ -119,25 +119,50 @@ export default function News() {
                         <p style={{ marginTop: '1rem', fontSize: '1.1rem' }}>Gathering cross-web intelligence...</p>
                     </div>
                 ) : (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem', paddingBottom: '3rem' }}
-                    >
-                        {activeTab === 'news' ? (
-                            news.length > 0 ? (
-                                news.map((item, index) => (
-                                    <NewsCard key={index} item={item} type="news" />
-                                ))
-                            ) : <p>No news found for this topic.</p>
-                        ) : (
-                            conferences.length > 0 ? (
-                                conferences.map((item, index) => (
-                                    <NewsCard key={index} item={item} type="conference" />
-                                ))
-                            ) : <p>No conferences found for this topic.</p>
+                    <div>
+                        {(news.some(n => n.is_trending) || conferences.some(c => c.is_trending)) ? (
+                            <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px', color: '#2dd4bf', fontSize: '0.95rem', background: 'rgba(45, 212, 191, 0.05)', padding: '12px 20px', borderRadius: '12px', border: '1px solid rgba(45, 212, 191, 0.2)' }}>
+                                <TrendingUp size={20} />
+                                <span>No direct results for "<strong>{searchTopic}</strong>". Auto-pivoting to <strong>Global Trending Research</strong> instead.</span>
+                            </div>
+                        ) : (news.length > 0 || conferences.length > 0) && (
+                            <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px', color: '#64748b', fontSize: '0.9rem' }}>
+                                <Sparkles size={16} color="#2dd4bf" />
+                                <span>Showing relevant research results for <strong>{searchTopic}</strong>.</span>
+                            </div>
                         )}
-                    </motion.div>
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem', paddingBottom: '3rem' }}
+                        >
+                            {activeTab === 'news' ? (
+                                news.length > 0 ? (
+                                    news.map((item, index) => (
+                                        <NewsCard key={index} item={item} type="news" />
+                                    ))
+                                ) : (
+                                    <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', background: '#1e293b', borderRadius: '24px', border: '1px solid #334155' }}>
+                                        <Newspaper size={48} color="#64748b" style={{ margin: '0 auto 1rem' }} />
+                                        <h3>Connecting to Research Hub...</h3>
+                                        <p style={{ color: '#94a3b8' }}>Pulling trending academic insights for you.</p>
+                                    </div>
+                                )
+                            ) : (
+                                conferences.length > 0 ? (
+                                    conferences.map((item, index) => (
+                                        <NewsCard key={index} item={item} type="conference" />
+                                    ))
+                                ) : (
+                                    <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem', background: '#1e293b', borderRadius: '24px', border: '1px solid #334155' }}>
+                                        <Calendar size={48} color="#64748b" style={{ margin: '0 auto 1rem' }} />
+                                        <h3>Discovering Global Events...</h3>
+                                        <p style={{ color: '#94a3b8' }}>Fetching upcoming high-impact conferences.</p>
+                                    </div>
+                                )
+                            )}
+                        </motion.div>
+                    </div>
                 )}
             </div>
             <style>{`.spin { animation: spin 1.5s linear infinite; } @keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
@@ -173,8 +198,9 @@ function NewsCard({ item, type }) {
                     onError={handleImageError}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
-                <div style={{ position: 'absolute', top: '12px', right: '12px', background: 'rgba(15, 23, 42, 0.8)', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', color: '#2dd4bf', border: '1px solid #334155', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Sparkles size={12} /> {type === 'news' ? 'Article' : 'Event'}
+                <div style={{ position: 'absolute', top: '12px', right: '12px', background: 'rgba(15, 23, 42, 0.8)', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', color: item.is_trending ? '#0ea5e9' : '#2dd4bf', border: item.is_trending ? '1px solid #0ea5e9' : '1px solid #334155', display: 'flex', alignItems: 'center', gap: '5px', backdropFilter: 'blur(4px)' }}>
+                    {item.is_trending ? <TrendingUp size={12} /> : <Sparkles size={12} />}
+                    {item.is_trending ? 'Trending' : (type === 'news' ? 'Article' : 'Event')}
                 </div>
             </div>
 

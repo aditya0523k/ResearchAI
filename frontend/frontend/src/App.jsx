@@ -16,7 +16,8 @@ import {
   Bell,
   Search,
   History,
-  ShieldAlert
+  ShieldAlert,
+  Shield
 } from 'lucide-react';
 import LibraryComponent from './components/Library';
 import Chat from './components/Chat';
@@ -34,10 +35,14 @@ function Sidebar({ isOpen, toggleSidebar }) {
   const menuItems = [
     { path: '/library', label: 'Knowledge Base', icon: <BookOpen size={18} /> },
     { path: '/chat', label: 'AI Assistant', icon: <MessageSquare size={18} /> },
-    { path: '/news', label: 'Market Intelligence', icon: <Newspaper size={18} /> },
+    { path: '/news', label: 'Conference Intelligence', icon: <Newspaper size={18} /> },
     { path: '/collab', label: 'Team Space', icon: <Users size={18} /> },
     { path: '/plagiarism', label: 'Plagiarism Check', icon: <ShieldAlert size={18} /> },
     { path: '/history', label: 'Chat History', icon: <History size={18} /> },
+  ];
+
+  const externalLinks = [
+    { href: 'https://aditya0523k.github.io/Vanguard', label: 'Security 3D Model', icon: <Shield size={18} /> },
   ];
 
   return (
@@ -94,6 +99,44 @@ function Sidebar({ isOpen, toggleSidebar }) {
             </Link>
           );
         })}
+
+        {/* External Links */}
+        <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', padding: '0.75rem 0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.5rem' }}>External</p>
+        {externalLinks.map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              textDecoration: 'none',
+              color: '#9ca3af',
+              background: 'transparent',
+              padding: '0.75rem 1rem',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              fontSize: '0.95rem',
+              fontWeight: 400,
+              transition: 'all 0.2s ease',
+              border: '1px solid transparent'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#1e1f24';
+              e.currentTarget.style.color = '#fff';
+              e.currentTarget.style.border = '1px solid #2d2e36';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#9ca3af';
+              e.currentTarget.style.border = '1px solid transparent';
+            }}
+          >
+            {item.icon}
+            {item.label}
+          </a>
+        ))}
       </nav>
 
       {/* User Footer */}
