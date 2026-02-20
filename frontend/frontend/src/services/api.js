@@ -1,0 +1,66 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'http://localhost:5000/api',
+});
+
+
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    console.log("Request Interceptor - Token:", token ? "Present" : "Missing");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && (error.response.status === 401 || error.response.status === 403 || error.response.status === 422)) {
+      const msg = error.response.data && error.response.data.msg ? error.response.data.msg : "Session expired";
+      alert(`Authentication Error: ${msg}. Please log in again.`);
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+      console.error("Authentication error:", error.response.status);
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const login = (email, password) => api.post('/auth/login', { email, password });
+export const register = (username, email, password) => api.post('/auth/register', { username, email, password });
+export const logout = () => api.post('/auth/logout');
+export const getCurrentUser = () => api.get('/auth/me');
+
+export const getPapers = () => api.get('/papers');
+export const uploadPaper = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post('/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+export const searchPapers = (query) => api.post('/search', { query });
+export const summarizePaper = (data) => api.post('/summarize', data);
+export const askQuestion = (question, context) => {
+  console.log("askQuestion API call:", { question, context });
+  return api.post('/qa', { question, context })
+    .catch(err => {
+      console.error("API call failed:", err);
+      throw err;
+    });
+};
+export const getNews = (topic) => api.get(`/news?topic=${topic}`);
+export const createRoom = (name) => api.post('/rooms', { name });
+export const getRoom = (roomId) => api.get(`/rooms/${roomId}`);
+export const addMessage = (roomId, content, user) => api.post(`/rooms/${roomId}/messages`, { content, user });
+export const getMessages = (roomId) => api.get(`/rooms/${roomId}/messages`);
+export const comparePapers = (filenames) => api.post('/compare', { filenames });
+export const getDashboardData = () => api.get('/dashboard');
+
+export default api;

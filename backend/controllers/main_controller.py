@@ -1,0 +1,225 @@
+from flask import Blueprint, request, jsonify
+from services import paper_service, search_service, llm_service, news_service, collaboration_service
+from models import db, History
+from flask_jwt_extended import jwt_required, get_jwt_identity
+import os
+from datetime import datetime
+
+main_bp = Blueprint('main', __name__)
+
+@main_bp.route('/upload', methods=['POST'])
+@jwt_required()
+def upload_paper():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    filepath = paper_service.save_file(file)
+    if filepath:
+        # Optimistically add to vector index immediately
+        search_service.add_paper(filepath)
+        
+        # Log history
+        user_id = get_jwt_identity()
+        new_history = History(user_id=user_id, action="Uploaded", item_name=file.filename)
+        db.session.add(new_history)
+        db.session.commit()
+        
+        return jsonify({'message': 'File uploaded and indexed successfully', 'filename': file.filename}), 201
+    else:
+        return jsonify({'error': 'Invalid file type'}), 400
+
+@main_bp.route('/papers', methods=['GET'])
+@jwt_required()
+def list_papers():
+    # Helper debug print
+    print(f"User {get_jwt_identity()} requesting papers list")
+    papers = paper_service.list_papers()
+    print(f"Found {len(papers)} papers")
+    return jsonify({'papers': papers}), 200
+
+@main_bp.route('/search', methods=['POST'])
+@jwt_required()
+def search_papers():
+    data = request.get_json()
+    query = data.get('query')
+    if not query:
+        return jsonify({'error': 'Query is required'}), 400
+    
+    results = search_service.search(query, k=5)
+    return jsonify({'results': results}), 200
+
+@main_bp.route('/summarize', methods=['POST'])
+@jwt_required()
+def summarize_paper():
+    data = request.get_json()
+    filename = data.get('filename')
+    
+    # If filename is provided, get content from file
+    if filename:
+        filepath = paper_service.get_paper_path(filename)
+        if not os.path.exists(filepath):
+             return jsonify({'error': 'File not found'}), 404
+        content = paper_service.extract_text(filepath)
+    else:
+        # Otherwise use provided text content (if any, e.g. from search result)
+        content = data.get('content')
+    
+    if not content:
+        return jsonify({'error': 'Content or filename is required'}), 400
+
+    summary = llm_service.summarize_text(content[:3000]) # Limit tokens
+    
+    # Log history
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+    except:
+        user_id = None
+        
+    if user_id:
+        item_name = filename if filename else "Text Snippet"
+        new_history = History(user_id=user_id, action="Summarized", item_name=item_name)
+        db.session.add(new_history)
+        db.session.commit()
+
+    return jsonify({'summary': summary}), 200
+
+@main_bp.route('/qa', methods=['POST'])
+@jwt_required()
+def answer_question():
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'error': 'Invalid request body or Content-Type'}), 400
+        
+    question = data.get('question')
+    context = data.get('context') 
+    if not context:
+        search_results = search_service.search(question, k=3)
+        context = "\n".join([res['content'] for res in search_results])
+    
+    if not question:
+        return jsonify({'error': 'Question is required'}), 400
+        
+    try:
+        answer = llm_service.answer_question(context, question)
+        return jsonify({'answer': answer}), 200
+    except Exception as e:
+        print(f"Error in answer_question: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@main_bp.route('/news', methods=['GET'])
+def get_news():
+    topic = request.args.get('topic', 'Artificial Intelligence')
+    articles = news_service.get_latest_news(topic)
+    return jsonify({'articles': articles}), 200
+
+@main_bp.route('/compare', methods=['POST'])
+@jwt_required()
+def compare_papers():
+    data = request.get_json()
+    filenames = data.get('filenames', [])
+    
+    papers_content = []
+    for filename in filenames:
+        filepath = paper_service.get_paper_path(filename)
+        if os.path.exists(filepath):
+            content = paper_service.extract_text(filepath)
+            papers_content.append(content[:2000] if content else "") # Limit tokens per paper
+            
+    if len(papers_content) < 2:
+        return jsonify({'error': 'At least two valid papers required for comparison'}), 400
+        
+    comparison = llm_service.compare_papers(papers_content)
+    
+    # Log history
+    user_id = get_jwt_identity()
+    new_history = History(user_id=user_id, action="Compared", item_name=", ".join(filenames))
+    db.session.add(new_history)
+    db.session.commit()
+    
+    return jsonify({'comparison': comparison}), 200
+
+@main_bp.route('/rooms', methods=['POST'])
+@jwt_required()
+def create_room():
+    data = request.get_json()
+    name = data.get('name')
+    if not name:
+        return jsonify({'error': 'Room name is required'}), 400
+    
+    room_id = collaboration_service.create_room(name)
+    return jsonify({'room_id': room_id, 'name': name}), 201
+
+@main_bp.route('/rooms/<room_id>', methods=['GET'])
+@jwt_required()
+def get_room(room_id):
+    room = collaboration_service.get_room(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found'}), 404
+    return jsonify(room), 200
+
+@main_bp.route('/rooms/<room_id>/messages', methods=['POST'])
+@jwt_required()
+def add_message(room_id):
+    data = request.get_json()
+    user_identity = get_jwt_identity()
+    # Ideally fetch username from DB, here just use ID or passed name if simple
+    content = data.get('content')
+    username = data.get('user', f"User {user_identity}")
+
+    if not content:
+        return jsonify({'error': 'Message content is required'}), 400
+        
+    message = collaboration_service.add_message(room_id, username, content)
+    if not message:
+         return jsonify({'error': 'Room not found'}), 404
+         
+    return jsonify(message), 201
+
+@main_bp.route('/rooms/<room_id>/messages', methods=['GET'])
+@jwt_required()
+def get_messages(room_id):
+    messages = collaboration_service.get_messages(room_id)
+    return jsonify({'messages': messages}), 200
+
+@main_bp.route('/dashboard', methods=['GET'])
+@jwt_required()
+def get_dashboard_data():
+    user_id = get_jwt_identity()
+    
+    # Fetch real user history
+    history = History.query.filter_by(user_id=user_id).order_by(History.timestamp.desc()).limit(10).all()
+    recent_activity = []
+    
+    for item in history:
+        # Calculate relative time if needed, or send ISO string
+        recent_activity.append({
+            "action": item.action,
+            "item": item.item_name,
+            "time": item.timestamp.strftime("%Y-%m-%d %H:%M"),
+            "user": "You"
+        })
+    
+    # Calculate stats
+    papers = paper_service.list_papers()
+    paper_count = len(papers)
+    
+    # Count specific user actions
+    summary_count = History.query.filter_by(user_id=user_id, action="Summarized").count()
+    
+    research_hours_saved = (paper_count * 0.5) + (summary_count * 0.2)
+    
+    stats = [
+        {"label": "Total Papers", "value": str(paper_count), "trend": "Global", "color": "#10b981"},
+        {"label": "Summaries Generated", "value": str(summary_count), "trend": "Personal", "color": "#10b981"}, 
+        {"label": "Active Collaborations", "value": str(len(collaboration_service.rooms)), "trend": "Active", "color": "#6b7280"},
+        {"label": "Research Hours Saved", "value": f"{research_hours_saved:.1f}h", "trend": "Est.", "color": "#10b981"},
+    ]
+        
+    return jsonify({
+        "stats": stats,
+        "recent_activity": recent_activity
+    }), 200
