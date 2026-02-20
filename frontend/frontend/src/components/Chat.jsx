@@ -1,46 +1,93 @@
 import { useState, useRef, useEffect } from 'react';
-import { askQuestion, uploadPaper } from '../services/api';
+import { askQuestion, uploadPaper, getDashboardData } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Paperclip, Sparkles, Zap, FileText, Image, Mic, User, ArrowUp } from 'lucide-react';
+import { Paperclip, Sparkles, Send, Mic, User, ArrowUp, Bot, FileText, Zap, Image as ImageIcon, X, Menu, History, MessageSquare, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// --- Customized Animation Components ---
 
 const ThinkingAnimation = () => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '12px' }}>
         <style>{`
-            @keyframes gemini-pulse {
+            @keyframes pulse-teal {
                 0%, 100% { opacity: 0.3; transform: scale(0.8); }
                 50% { opacity: 1; transform: scale(1.1); }
             }
-            .gemini-dot {
+            .dot-teal {
                 width: 8px;
                 height: 8px;
                 border-radius: 50%;
-                background: linear-gradient(135deg, #4c8bfa, #a855f7);
-                animation: gemini-pulse 1.4s infinite ease-in-out both;
+                background: linear-gradient(135deg, #2dd4bf, #0ea5e9); /* Teal to Sky Blue */
+                animation: pulse-teal 1.4s infinite ease-in-out both;
             }
         `}</style>
-        <div className="gemini-dot" style={{ animationDelay: '0s' }}></div>
-        <div className="gemini-dot" style={{ animationDelay: '0.2s' }}></div>
-        <div className="gemini-dot" style={{ animationDelay: '0.4s' }}></div>
+        <div className="dot-teal" style={{ animationDelay: '0s' }}></div>
+        <div className="dot-teal" style={{ animationDelay: '0.2s' }}></div>
+        <div className="dot-teal" style={{ animationDelay: '0.4s' }}></div>
     </div>
 );
 
+const Typewriter = ({ text, onComplete }) => {
+    const [displayedText, setDisplayedText] = useState('');
+    const [isComplete, setIsComplete] = useState(false);
+
+    // Safety check for empty text
+    useEffect(() => {
+        if (!text) {
+            setDisplayedText('');
+            setIsComplete(true);
+            if (onComplete) onComplete();
+            return;
+        }
+
+        // Clean text - remove "airstrikes" (markdown bold/italic markers)
+        const cleanText = text.replace(/(\*\*|__)(.*?)\1/g, '$2').replace(/(\*)(.*?)\1/g, '$2');
+
+        setDisplayedText('');
+        setIsComplete(false);
+
+        let index = 0;
+        const speed = 10;
+
+        const interval = setInterval(() => {
+            if (index < cleanText.length) {
+                const charsToAdd = cleanText.slice(index, index + 2);
+                setDisplayedText((prev) => prev + charsToAdd);
+                index += 2;
+            } else {
+                clearInterval(interval);
+                setIsComplete(true);
+                if (onComplete) onComplete();
+            }
+        }, speed);
+
+        return () => clearInterval(interval);
+    }, [text]);
+
+    return (
+        <span>
+            {displayedText}
+            {!isComplete && (
+                <span style={{ display: 'inline-block', width: '2px', height: '14px', backgroundColor: '#2dd4bf', marginLeft: '2px', animation: 'blink 1s infinite', verticalAlign: 'text-bottom' }} />
+            )}
+            <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
+        </span>
+    );
+};
+
 const WelcomeScreen = ({ username, onSuggestionClick }) => {
     const suggestions = [
-        { icon: <Zap size={18} />, text: "Explain quantum computing in simple terms", delay: 0.1 },
-        { icon: <FileText size={18} />, text: "Summarize the key points of the uploaded paper", delay: 0.2 },
-        { icon: <Image size={18} />, text: "Generate a creative image description", delay: 0.3 },
-        { icon: <Sparkles size={18} />, text: "Brainstorm research topics on AI ethics", delay: 0.4 },
+        { icon: <Zap size={18} />, text: "Explain quantum computing", delay: 0.1 },
+        { icon: <FileText size={18} />, text: "Summarize this paper", delay: 0.2 },
+        { icon: <ImageIcon size={18} />, text: "Analyze this image", delay: 0.3 },
+        { icon: <Sparkles size={18} />, text: "Creative writing ideas", delay: 0.4 },
     ];
 
     const containerVariants = {
         hidden: { opacity: 0 },
-        visible: { 
+        visible: {
             opacity: 1,
-            transition: { 
-                staggerChildren: 0.1,
-                delayChildren: 0.2
-            }
+            transition: { staggerChildren: 0.1, delayChildren: 0.2 }
         }
     };
 
@@ -50,7 +97,7 @@ const WelcomeScreen = ({ username, onSuggestionClick }) => {
     };
 
     return (
-        <motion.div 
+        <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
@@ -62,78 +109,73 @@ const WelcomeScreen = ({ username, onSuggestionClick }) => {
                 height: '100%',
                 padding: '2rem',
                 textAlign: 'center',
-                color: '#e3e3e3',
-                overflow: 'hidden' 
+                color: '#e2e8f0'
             }}
         >
             <motion.div variants={itemVariants}>
-                <div style={{ 
-                    marginBottom: '1.5rem',
-                    background: 'linear-gradient(135deg, rgba(76, 139, 250, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)',
-                    padding: '1.25rem',
+                <div style={{
+                    marginBottom: '2rem',
+                    background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.15) 0%, rgba(14, 165, 233, 0.15) 100%)',
+                    padding: '1.5rem',
                     borderRadius: '24px',
                     display: 'inline-flex',
-                    border: '1px solid rgba(76, 139, 250, 0.2)',
-                    boxShadow: '0 0 40px rgba(76, 139, 250, 0.1)'
+                    border: '1px solid rgba(45, 212, 191, 0.3)',
+                    boxShadow: '0 0 40px rgba(45, 212, 191, 0.1)'
                 }}>
-                    <Sparkles size={48} color="#4c8bfa" />
+                    <Bot size={48} color="#2dd4bf" />
                 </div>
             </motion.div>
-            
-            <motion.h1 
+
+            <motion.h1
                 variants={itemVariants}
-                style={{ 
-                    fontSize: '3.5rem', 
-                    fontWeight: 700, 
+                style={{
+                    fontSize: '3rem',
+                    fontWeight: 700,
                     marginBottom: '0.5rem',
-                    background: 'linear-gradient(to right, #4c8bfa, #a855f7, #ef4444)',
+                    background: 'linear-gradient(to right, #2dd4bf, #0ea5e9)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
-                    letterSpacing: '-0.03em'
+                    letterSpacing: '-0.02em'
                 }}
             >
                 Hello, {username || 'Human'}
             </motion.h1>
-            
-            <motion.h2 
+
+            <motion.h2
                 variants={itemVariants}
-                style={{ fontSize: '1.75rem', color: '#6b7280', fontWeight: 500, marginBottom: '4rem' }}
+                style={{ fontSize: '1.5rem', color: '#94a3b8', fontWeight: 500, marginBottom: '3rem' }}
             >
-                How can I help you today?
+                Ready to assist you.
             </motion.h2>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', width: '100%', maxWidth: '800px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', width: '100%', maxWidth: '800px' }}>
                 {suggestions.map((s, i) => (
                     <motion.button
                         key={i}
                         variants={itemVariants}
                         onClick={() => onSuggestionClick(s.text)}
-                        whileHover={{ scale: 1.02, backgroundColor: '#1e1f24', borderColor: '#4c8bfa' }}
+                        whileHover={{ scale: 1.02, backgroundColor: '#1e293b', borderColor: '#2dd4bf' }}
                         whileTap={{ scale: 0.98 }}
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '16px',
-                            padding: '1.25rem',
-                            background: '#131418',
-                            border: '1px solid #2d2e36',
+                            gap: '12px',
+                            padding: '1rem',
+                            background: '#0f172a',
+                            border: '1px solid #1e293b',
                             borderRadius: '16px',
                             cursor: 'pointer',
                             textAlign: 'left',
-                            color: '#e3e3e3',
+                            color: '#cbd5e1',
                             fontSize: '0.95rem',
                             transition: 'all 0.2s',
-                            height: '100%'
                         }}
                     >
-                        <div style={{ 
-                            padding: '10px', 
-                            background: '#1e1f24', 
-                            borderRadius: '50%', 
-                            color: '#4c8bfa',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
+                        <div style={{
+                            padding: '8px',
+                            background: 'rgba(45, 212, 191, 0.1)',
+                            borderRadius: '50%',
+                            color: '#2dd4bf'
                         }}>
                             {s.icon}
                         </div>
@@ -145,13 +187,94 @@ const WelcomeScreen = ({ username, onSuggestionClick }) => {
     );
 };
 
+const Sidebar = ({ isOpen, toggleSidebar, onHistorySelect }) => {
+    const [history, setHistory] = useState([]);
+
+    useEffect(() => {
+        if (isOpen) {
+            getDashboardData().then(res => {
+                const activity = res.data.recent_activity || [];
+                setHistory(activity);
+            }).catch(err => console.error("History fetch error:", err));
+        }
+    }, [isOpen]);
+
+    return (
+        <motion.div
+            initial={{ x: -300 }}
+            animate={{ x: isOpen ? 0 : -300 }}
+            transition={{ type: 'spring', damping: 20 }}
+            style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                height: '100%',
+                width: '280px',
+                background: '#0f172a',
+                borderRight: '1px solid #1e293b',
+                zIndex: 50,
+                padding: '1.5rem',
+                display: 'flex',
+                flexDirection: 'column'
+            }}
+        >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <History size={20} color="#2dd4bf" /> History
+                </h2>
+                <button onClick={toggleSidebar} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+                    <X size={20} />
+                </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {history.length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '0.9rem', textAlign: 'center', padding: '1rem' }}>No recent history</div>
+                ) : (
+                    history.map((item, idx) => (
+                        <motion.button
+                            key={idx}
+                            whileHover={{ scale: 1.02, backgroundColor: '#1e293b' }}
+                            onClick={() => onHistorySelect(item.item)}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid #334155',
+                                borderRadius: '12px',
+                                padding: '12px',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                color: '#e2e8f0'
+                            }}
+                        >
+                            <div style={{ fontSize: '0.9rem', fontWeight: 500, marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {item.item || "Untitled Chat"}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                {item.action} • {item.time ? item.time.split(' ')[0] : 'Just now'}
+                            </div>
+                        </motion.button>
+                    ))
+                )}
+            </div>
+            
+            <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #1e293b', fontSize: '0.8rem', color: '#475569', textAlign: 'center' }}>
+                Zencoders AI © 2026
+            </div>
+        </motion.div>
+    );
+};
+
 export default function Chat() {
     const { user } = useAuth();
-    const [messages, setMessages] = useState([]); 
+    const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [uploading, setUploading] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [selectedImage, setSelectedImage] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
+
     const fileInputRef = useRef(null);
+    const imageInputRef = useRef(null);
     const messagesEndRef = useRef(null);
 
     const scrollToBottom = () => {
@@ -162,154 +285,246 @@ export default function Chat() {
         scrollToBottom();
     }, [messages, loading]);
 
-    const handleSend = async (text = input) => {
-        if (!text.trim()) return;
-
-        const userMessage = { role: 'user', content: text };
-        setMessages(prev => [...prev, userMessage]);
-        setInput('');
+    const handleStreamingResponse = async (prompt, imageData = null) => {
         setLoading(true);
+        const token = localStorage.getItem('token');
+        const endpoint = imageData ? '/api/analyze-image' : '/api/qa-stream';
+        const body = imageData 
+            ? JSON.stringify({ prompt, image: imageData }) 
+            : JSON.stringify({ question: prompt });
 
         try {
-            const res = await askQuestion(text, null);
-            let answer = "I couldn't generate a response.";
-            if (res && res.data) {
-                 if (res.data.answer) answer = res.data.answer;
-                 else if (typeof res.data === 'string') answer = res.data;
-            }
+            const response = await fetch(`http://localhost:5000${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: body
+            });
 
-            const aiMessage = { role: 'assistant', content: answer };
-            setMessages(prev => [...prev, aiMessage]);
+            if (!response.ok) throw new Error("Stream connection failed");
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let aiMessageContent = "";
+
+            // Add placeholder message
+            setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                aiMessageContent += chunk;
+                
+                // Update the last message
+                setMessages(prev => {
+                    const newMsgs = [...prev];
+                    const lastMsg = newMsgs[newMsgs.length - 1];
+                    lastMsg.content = aiMessageContent;
+                    return newMsgs;
+                });
+            }
         } catch (error) {
-            setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I'm having trouble connecting right now. Please try again." }]);
+            console.error("Streaming error:", error);
+            setMessages(prev => [...prev, { role: 'assistant', content: "Error: Could not retrieve response." }]);
         } finally {
             setLoading(false);
+            setSelectedImage(null);
+            setImagePreview(null);
         }
+    };
+
+    const handleSend = async (text = input) => {
+        if (!text.trim() && !selectedImage) return;
+
+        const userContent = text;
+        const userMessage = { role: 'user', content: userContent };
+        if (selectedImage) {
+            userMessage.image = imagePreview; // Store preview for UI
+        }
+        
+        setMessages(prev => [...prev, userMessage]);
+        setInput('');
+        
+        await handleStreamingResponse(text || "Describe this image", selectedImage);
     };
 
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        setUploading(true);
         setMessages(prev => [...prev, { role: 'system', content: `Uploading ${file.name}...` }]);
-
         try {
             await uploadPaper(file);
-            setMessages(prev => [...prev, { role: 'system', content: `✅ ${file.name} uploaded successfully.` }]);
+            setMessages(prev => [...prev, { role: 'system', content: `Success: ${file.name} uploaded.` }]);
         } catch (error) {
-            setMessages(prev => [...prev, { role: 'system', content: `❌ Failed to upload ${file.name}.` }]);
+            setMessages(prev => [...prev, { role: 'system', content: `Error: Failed to upload ${file.name}.` }]);
         } finally {
-            setUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
+    const handleImageSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64String = reader.result; // Data URL
+                // We need to send base64 data to backend. Backend expects either URL or base64. 
+                // The Data URL format is "data:image/jpeg;base64,....." which works for our backend logic.
+                setSelectedImage(base64String);
+                setImagePreview(base64String);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     return (
-        <div style={{ height: '100vh', maxHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#0f1014', position: 'relative', overflow: 'hidden' }}>
+        <div style={{
+            height: '100vh',
+            maxHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#0b0c10',
+            position: 'relative',
+            overflow: 'hidden'
+        }}>
+            {/* Sidebar Overlay */}
+            {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }} />}
             
-            {/* Background Ambience */}
+            <Sidebar isOpen={sidebarOpen} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} onHistorySelect={(txt) => { setInput(txt); setSidebarOpen(false); }} />
+
+            {/* Top Bar */}
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', padding: '1rem', display: 'flex', justifyContent: 'space-between', zIndex: 30, pointerEvents: 'none' }}>
+                <button onClick={() => setSidebarOpen(true)} style={{ pointerEvents: 'auto', background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+                    <Menu size={24} />
+                </button>
+            </div>
+
+            {/* Background Gradients */}
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
-                 <div style={{ position: 'absolute', top: '-10%', right: '-5%', width: '500px', height: '500px', background: 'radial-gradient(circle, rgba(76, 139, 250, 0.08) 0%, rgba(15, 16, 20, 0) 70%)', borderRadius: '50%', filter: 'blur(40px)' }}></div>
-                 <div style={{ position: 'absolute', bottom: '10%', left: '-5%', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(168, 85, 247, 0.08) 0%, rgba(15, 16, 20, 0) 70%)', borderRadius: '50%', filter: 'blur(40px)' }}></div>
+                <div style={{ position: 'absolute', top: '-10%', right: '-5%', width: '600px', height: '600px', background: 'radial-gradient(circle, rgba(45, 212, 191, 0.06) 0%, rgba(11, 12, 16, 0) 70%)', borderRadius: '50%', filter: 'blur(60px)' }}></div>
+                <div style={{ position: 'absolute', bottom: '10%', left: '-10%', width: '500px', height: '500px', background: 'radial-gradient(circle, rgba(14, 165, 233, 0.06) 0%, rgba(11, 12, 16, 0) 70%)', borderRadius: '50%', filter: 'blur(60px)' }}></div>
             </div>
 
             {/* Chat Area */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 120px 0', zIndex: 1, scrollBehavior: 'smooth' }}>
                 {messages.length === 0 ? (
-                    <WelcomeScreen username={user?.username?.split(' ')[0]} onSuggestionClick={handleSend} />
+                    <WelcomeScreen username={user?.username?.split(' ')[0]} onSuggestionClick={(txt) => handleSend(txt)} />
                 ) : (
                     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                         <AnimatePresence>
-                        {messages.map((msg, idx) => {
-                            const isUser = msg.role === 'user';
-                            const isSystem = msg.role === 'system';
+                            {messages.map((msg, idx) => {
+                                const isUser = msg.role === 'user';
+                                const isSystem = msg.role === 'system';
+                                const isLast = idx === messages.length - 1;
 
-                            if (isSystem) {
+                                if (isSystem) {
+                                    return (
+                                        <motion.div
+                                            key={idx}
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            style={{ textAlign: 'center', fontSize: '0.8rem', color: '#64748b', margin: '1rem 0', background: '#1e293b', padding: '0.5rem 1rem', borderRadius: '12px', alignSelf: 'center', width: 'fit-content' }}
+                                        >
+                                            {msg.content}
+                                        </motion.div>
+                                    );
+                                }
+
                                 return (
-                                    <motion.div 
+                                    <motion.div
                                         key={idx}
-                                        initial={{ opacity: 0, scale: 0.9 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        style={{ textAlign: 'center', fontSize: '0.85rem', color: '#6b7280', margin: '0.5rem 0', fontStyle: 'italic', background: '#1e1f24', padding: '0.5rem 1rem', borderRadius: '12px', alignSelf: 'center', width: 'fit-content' }}
-                                    >
-                                        {msg.content}
-                                    </motion.div>
-                                );
-                            }
-
-                            return (
-                                <motion.div 
-                                    key={idx}
-                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    transition={{ duration: 0.4, ease: "easeOut" }}
-                                    style={{ 
-                                        display: 'flex', 
-                                        gap: '1.5rem',
-                                        flexDirection: isUser ? 'row-reverse' : 'row',
-                                        alignItems: 'flex-start'
-                                    }}
-                                >
-                                    {/* Avatar */}
-                                    <motion.div 
-                                        whileHover={{ scale: 1.1, rotate: isUser ? 0 : 10 }}
-                                        style={{ 
-                                            width: '36px', 
-                                            height: '36px', 
-                                            borderRadius: '50%', 
-                                            background: isUser ? '#e2e8f0' : 'linear-gradient(135deg, #4c8bfa 0%, #a855f7 100%)',
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'center',
-                                            flexShrink: 0,
-                                            boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
+                                        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        transition={{ duration: 0.4, ease: "easeOut" }}
+                                        style={{
+                                            display: 'flex',
+                                            gap: '1.25rem',
+                                            flexDirection: isUser ? 'row-reverse' : 'row',
+                                            alignItems: 'flex-start'
                                         }}
                                     >
-                                        {isUser ? <User size={20} color="#0f1014" /> : <Sparkles size={20} color="#fff" />}
-                                    </motion.div>
+                                        {/* Avatar */}
+                                        <motion.div
+                                            whileHover={{ scale: 1.1 }}
+                                            style={{
+                                                width: '38px',
+                                                height: '38px',
+                                                borderRadius: '50%',
+                                                background: isUser ? '#334155' : 'linear-gradient(135deg, #2dd4bf 0%, #0ea5e9 100%)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                flexShrink: 0,
+                                                boxShadow: isUser ? 'none' : '0 4px 15px rgba(45, 212, 191, 0.3)'
+                                            }}
+                                        >
+                                            {isUser ? <User size={20} color="#e2e8f0" /> : <Bot size={22} color="#fff" />}
+                                        </motion.div>
 
-                                    {/* Message Content */}
-                                    <div style={{ 
-                                        flex: 1,
-                                        maxWidth: '85%',
-                                        background: isUser ? '#1e1f24' : 'transparent',
-                                        padding: isUser ? '1rem 1.5rem' : '0.5rem 0',
-                                        borderRadius: isUser ? '24px 24px 4px 24px' : '0',
-                                        fontSize: '1rem',
-                                        lineHeight: '1.7',
-                                        color: '#e3e3e3'
-                                    }}>
-                                        {isUser ? (
-                                            msg.content
-                                        ) : (
-                                            <div>
-                                                <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msg.content}</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            );
-                        })}
+                                        {/* Message Content */}
+                                        <div style={{
+                                            flex: 1,
+                                            maxWidth: '85%',
+                                            background: isUser ? '#1e293b' : 'transparent',
+                                            padding: isUser ? '1rem 1.5rem' : '0.5rem 0',
+                                            borderRadius: isUser ? '20px 20px 4px 20px' : '0',
+                                            fontSize: '1rem',
+                                            lineHeight: '1.7',
+                                            color: '#e2e8f0',
+                                            boxShadow: isUser ? '0 2px 10px rgba(0,0,0,0.1)' : 'none'
+                                        }}>
+                                            {isUser ? (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                    {msg.image && (
+                                                        <img src={msg.image} alt="Upload" style={{ maxWidth: '200px', borderRadius: '12px', marginBottom: '8px' }} />
+                                                    )}
+                                                    {msg.content}
+                                                </div>
+                                            ) : (
+                                                <div style={{ color: '#cbd5e1' }}>
+                                                    {/* Clean text for display */}
+                                                    {(() => {
+                                                        const cleanContent = msg.content.replace(/(\*\*|__)(.*?)\1/g, '$2').replace(/(\*)(.*?)\1/g, '$2');
+                                                        return isLast && loading ? (
+                                                            /* If loading, assume it's streaming, so show raw content as it comes, or Typewriter if needed but usually stream is chunked. 
+                                                               Since we update state chunk by chunk, standard render is fine. Typewriter is for simulation. 
+                                                               Let's just render the text directly for streaming feeling.
+                                                            */
+                                                            <div style={{ whiteSpace: 'pre-wrap' }}>{cleanContent}<span style={{inlineBlock: true, width: '6px', height: '14px', background: '#2dd4bf', animation: 'blink 1s infinite'}}>|</span></div>
+                                                        ) : (
+                                                            <div style={{ whiteSpace: 'pre-wrap' }}>{cleanContent}</div>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
                         </AnimatePresence>
 
                         {loading && (
-                            <motion.div 
+                            <motion.div
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}
+                                style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}
                             >
-                                <div style={{ 
-                                    width: '36px', 
-                                    height: '36px', 
-                                    borderRadius: '50%', 
-                                    background: 'linear-gradient(135deg, #4c8bfa 0%, #a855f7 100%)',
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center', 
+                                <div style={{
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, #2dd4bf 0%, #0ea5e9 100%)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
                                     flexShrink: 0
                                 }}>
-                                    <Sparkles size={20} color="#fff" />
+                                    <Bot size={22} color="#fff" />
                                 </div>
                                 <ThinkingAnimation />
                             </motion.div>
@@ -319,149 +534,144 @@ export default function Chat() {
                 )}
             </div>
 
-            {/* Input Area (Gemini Style) */}
-            <div style={{ 
-                position: 'fixed', 
-                bottom: 0, 
-                left: 0, 
-                width: '100%', 
+            {/* Input Area */}
+            <div style={{
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                width: '100%',
                 padding: '1.5rem 2rem 2rem 2rem',
-                background: 'linear-gradient(to top, #0f1014 85%, rgba(15, 16, 20, 0) 100%)',
+                background: 'linear-gradient(to top, #0b0c10 85%, transparent 100%)',
                 display: 'flex',
                 justifyContent: 'center',
                 zIndex: 10,
                 pointerEvents: 'none'
             }}>
-                <motion.div 
+                <motion.div
                     initial={{ y: 50, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.5, type: 'spring' }}
-                    style={{ 
-                        width: '100%', 
-                        maxWidth: '800px', 
-                        background: '#1e1f24', 
-                        borderRadius: '3rem', 
+                    style={{
+                        width: '100%',
+                        maxWidth: '850px',
+                        background: '#1e293b',
+                        borderRadius: '32px',
                         padding: '0.75rem 1rem',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.75rem',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
-                        border: '1px solid #2d2e36',
-                        pointerEvents: 'auto'
+                        border: '1px solid #334155',
+                        pointerEvents: 'auto',
+                        flexDirection: 'column'
                     }}
                 >
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileUpload} 
-                        style={{ display: 'none' }} 
-                        accept=".pdf,.txt"
-                    />
-                    
-                    <motion.button 
-                        whileHover={{ scale: 1.1, background: '#2d2e36' }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => fileInputRef.current.click()}
-                        style={{ 
-                            width: '44px', 
-                            height: '44px', 
-                            borderRadius: '50%', 
-                            border: 'none', 
-                            background: 'transparent', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            cursor: 'pointer',
-                            color: '#e3e3e3',
-                            transition: 'background 0.2s'
-                        }}
-                        title="Upload file"
-                    >
-                        <Paperclip size={20} />
-                    </motion.button>
-                    
-                    <input 
-                        type="text" 
-                        placeholder="Ask anything..." 
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                        disabled={loading}
-                        style={{ 
-                            flex: 1, 
-                            border: 'none', 
-                            background: 'transparent', 
-                            outline: 'none', 
-                            fontSize: '1rem', 
-                            color: '#e3e3e3',
-                            padding: '0 0.5rem',
-                            fontFamily: 'inherit'
-                        }} 
-                    />
-
-                    {input.trim() ? (
-                        <motion.button 
-                            initial={{ scale: 0, rotate: -45 }}
-                            animate={{ scale: 1, rotate: 0 }}
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => handleSend()}
-                            disabled={loading}
-                            style={{ 
-                                width: '44px', 
-                                height: '44px', 
-                                borderRadius: '50%', 
-                                border: 'none', 
-                                background: '#e3e3e3', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                cursor: 'pointer',
-                                color: '#0f1014'
-                            }}
-                        >
-                            <ArrowUp size={24} strokeWidth={2.5} />
-                        </motion.button>
-                    ) : (
-                       <motion.button 
-                            whileHover={{ scale: 1.1, background: '#2d2e36' }}
-                            style={{ 
-                                width: '44px', 
-                                height: '44px', 
-                                borderRadius: '50%', 
-                                border: 'none', 
-                                background: 'transparent', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center', 
-                                cursor: 'not-allowed',
-                                color: '#6b7280'
-                            }}
-                        >
-                            <Mic size={22} />
-                        </motion.button>
+                    {/* Image Preview Area */}
+                    {imagePreview && (
+                        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '8px', borderBottom: '1px solid #334155' }}>
+                            <img src={imagePreview} alt="Preview" style={{ height: '50px', borderRadius: '8px' }} />
+                            <span style={{ fontSize: '0.8rem', color: '#94a3b8', flex: 1 }}>Image attached</span>
+                            <button onClick={() => { setImagePreview(null); setSelectedImage(null); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><X size={16}/></button>
+                        </div>
                     )}
+
+                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileUpload}
+                            style={{ display: 'none' }}
+                            accept=".pdf,.txt"
+                        />
+                        <input
+                            type="file"
+                            ref={imageInputRef}
+                            onChange={handleImageSelect}
+                            style={{ display: 'none' }}
+                            accept="image/*"
+                        />
+
+                        <motion.button
+                            whileHover={{ scale: 1.1, background: '#334155' }}
+                            onClick={() => fileInputRef.current.click()}
+                            style={{
+                                width: '42px', height: '42px', borderRadius: '50%', border: 'none', background: 'transparent',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8'
+                            }}
+                            title="Upload Document"
+                        >
+                            <Paperclip size={20} />
+                        </motion.button>
+
+                        <motion.button
+                            whileHover={{ scale: 1.1, background: '#334155' }}
+                            onClick={() => imageInputRef.current.click()}
+                            style={{
+                                width: '42px', height: '42px', borderRadius: '50%', border: 'none', background: 'transparent',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8'
+                            }}
+                            title="Upload Image"
+                        >
+                            <ImageIcon size={20} />
+                        </motion.button>
+
+                        <input
+                            type="text"
+                            placeholder={selectedImage ? "Asking about this image..." : "Ask Zencoders AI..."}
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                            disabled={loading}
+                            style={{
+                                flex: 1,
+                                border: 'none',
+                                background: 'transparent',
+                                outline: 'none',
+                                fontSize: '1rem',
+                                color: '#f1f5f9',
+                                padding: '0 0.5rem',
+                                fontFamily: 'inherit'
+                            }}
+                        />
+
+                        {input.trim() || selectedImage ? (
+                            <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                onClick={() => handleSend()}
+                                disabled={loading}
+                                style={{
+                                    width: '42px', height: '42px', borderRadius: '50%', border: 'none', background: '#f1f5f9',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0f172a'
+                                }}
+                            >
+                                <ArrowUp size={22} strokeWidth={2.5} />
+                            </motion.button>
+                        ) : (
+                            <motion.button
+                                style={{
+                                    width: '42px', height: '42px', borderRadius: '50%', border: 'none', background: 'transparent',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'not-allowed', color: '#64748b'
+                                }}
+                            >
+                                <Mic size={22} />
+                            </motion.button>
+                        )}
+                    </div>
                 </motion.div>
             </div>
-            
-            <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1 }}
-                style={{ 
-                    position: 'absolute', 
-                    bottom: '0.5rem', 
-                    width: '100%', 
-                    textAlign: 'center', 
-                    fontSize: '0.7rem', 
-                    color: '#6b7280',
-                    paddingBottom: '0.5rem',
-                    pointerEvents: 'none',
-                    zIndex: 20
-                }}
-            >
+
+            <div style={{
+                position: 'absolute',
+                bottom: '0.5rem',
+                width: '100%',
+                textAlign: 'center',
+                fontSize: '0.75rem',
+                color: '#475569',
+                paddingBottom: '0.5rem',
+                pointerEvents: 'none',
+                zIndex: 20
+            }}>
                 AI can make mistakes. Verify important information.
-            </motion.div>
+            </div>
         </div>
     );
 }

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response, stream_with_context
 from services import paper_service, search_service, llm_service, news_service, collaboration_service
 from models import db, History
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -6,6 +6,8 @@ import os
 from datetime import datetime
 
 main_bp = Blueprint('main', __name__)
+
+# ... existing upload route ...
 
 @main_bp.route('/upload', methods=['POST'])
 @jwt_required()
@@ -109,6 +111,62 @@ def answer_question():
     except Exception as e:
         print(f"Error in answer_question: {e}")
         return jsonify({'error': str(e)}), 500
+
+@main_bp.route('/qa-stream', methods=['POST'])
+@jwt_required()
+def stream_answer_question():
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'error': 'Invalid request body'}), 400
+        
+    question = data.get('question')
+    
+    # Log history
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if user_id:
+            # Truncate prompt for history item
+            item_name = (question[:30] + '...') if len(question) > 30 else question
+            new_history = History(user_id=user_id, action="Chat", item_name=item_name)
+            db.session.add(new_history)
+            db.session.commit()
+    except Exception as e:
+        print(f"History Log Error: {e}")
+
+    def generate():
+        for chunk in llm_service.generate_response_stream(question):
+            yield chunk
+
+    return Response(stream_with_context(generate()), mimetype='text/plain')
+
+@main_bp.route('/analyze-image', methods=['POST'])
+@jwt_required()
+def analyze_image():
+    data = request.get_json(silent=True)
+    image_data = data.get('image') # Base64 string or URL
+    prompt = data.get('prompt', 'Describe this image')
+    
+    if not image_data:
+        return jsonify({'error': 'Image data required'}), 400
+
+    # Log history
+    try:
+        user_identity = get_jwt_identity()
+        user_id = int(str(user_identity)) if user_identity else None
+        if user_id:
+            item_name = (prompt[:30] + '...') if len(prompt) > 30 else prompt
+            new_history = History(user_id=user_id, action="Image Analysis", item_name=item_name)
+            db.session.add(new_history)
+            db.session.commit()
+    except Exception as e:
+        print(f"History Log Error: {e}")
+
+    def generate():
+        for chunk in llm_service.analyze_image_stream(prompt, image_data):
+            yield chunk
+
+    return Response(stream_with_context(generate()), mimetype='text/plain')
 
 @main_bp.route('/news', methods=['GET'])
 def get_news():

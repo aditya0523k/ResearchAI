@@ -5,7 +5,7 @@ This is the backend for the AI Research Agent, built with Python Flask.
 ## Features
 - **Paper Upload**: Upload PDF or text files.
 - **Intelligent Search**: Semantic search using vector embeddings (FAISS + HuggingFace).
-- **Summarization & UI**: Automated summaries and question answering using Groq (Mixtral).
+- **Summarization & UI**: Automated summaries and question answering using Groq (Llama 3).
 - **News Integration**: Real-time research news via Tavily API.
 - **Collaboration**: Basic research rooms for sharing insights.
 
